@@ -253,6 +253,10 @@ input[type="search"] {
   overflow: auto;
 }
 
+.mobile-day-tabs {
+  display: none;
+}
+
 table {
   width: 100%;
   border-collapse: separate;
@@ -720,15 +724,47 @@ td:last-child {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 760px) {
+  body {
+    font-size: 14px;
+  }
+
+  .topbar {
+    position: static;
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+
   .topbar,
   .layout {
     padding-left: 14px;
     padding-right: 14px;
   }
 
+  .title-block h1 {
+    font-size: 20px;
+  }
+
+  .title-block p {
+    font-size: 13px;
+  }
+
+  .layout {
+    gap: 14px;
+    padding-top: 14px;
+  }
+
   .summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .metric {
+    padding: 11px 12px;
+  }
+
+  .metric strong {
+    font-size: 22px;
   }
 
   input[type="date"],
@@ -753,7 +789,111 @@ td:last-child {
     flex-direction: column;
   }
 
+  .schedule-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .schedule-actions span {
+    width: 100%;
+  }
+
+  .mobile-day-tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(86px, 1fr);
+    gap: 8px;
+    overflow-x: auto;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    background: #fbfcfd;
+  }
+
+  .mobile-day-tab {
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    border-radius: 8px;
+    min-height: 48px;
+    padding: 6px 8px;
+    display: grid;
+    gap: 2px;
+    text-align: center;
+  }
+
+  .mobile-day-tab span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .mobile-day-tab strong {
+    font-size: 13px;
+  }
+
+  .mobile-day-tab.active {
+    border-color: var(--focus);
+    background: #e8f6f8;
+    color: var(--focus);
+  }
+
+  .schedule-scroll {
+    overflow-x: visible;
+  }
+
+  .schedule {
+    min-width: 0;
+    table-layout: fixed;
+  }
+
+  .time-head,
+  .time-cell {
+    width: 92px;
+    min-width: 92px;
+    position: sticky;
+    left: 0;
+  }
+
+  .schedule thead th {
+    padding: 9px 7px;
+  }
+
+  .time-cell {
+    padding: 8px;
+    font-size: 12px;
+  }
+
+  .slot {
+    padding: 5px;
+  }
+
+  .slot-input {
+    min-height: 42px;
+    font-size: 14px;
+  }
+
+  .legend {
+    padding: 10px 12px;
+  }
+
   .student-row {
     grid-template-columns: 1fr;
+  }
+
+  .student {
+    grid-template-columns: 1fr auto;
+  }
+
+  .student-status {
+    grid-column: 2;
+  }
+
+  .student-drag-handle {
+    width: 52px;
+    height: 32px;
+  }
+
+  .autocomplete-panel {
+    max-width: calc(100vw - 28px);
   }
 }
