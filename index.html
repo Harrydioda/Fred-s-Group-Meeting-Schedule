@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fred Meeting Schedule</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="data.js" defer></script>
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="title-block">
+          <h1>Fred's Group Meeting Schedule</h1>
+          <p>Please check your time slot.</p>
+        </div>
+
+        <div class="controls" aria-label="Schedule controls">
+          <button class="icon-button" id="prevWeekButton" type="button" aria-label="Previous week" title="Previous week">&lt;</button>
+          <div class="field">
+            <label for="datePicker">Date</label>
+            <input id="datePicker" type="date">
+          </div>
+          <button class="icon-button" id="nextWeekButton" type="button" aria-label="Next week" title="Next week">&gt;</button>
+          <button class="text-button" id="todayButton" type="button">Today</button>
+          <button class="text-button" id="toggleWeekendButton" type="button">Show weekend</button>
+          <div class="field search-field">
+            <label for="searchInput">Search</label>
+            <input id="searchInput" type="search" placeholder="Name, location, note">
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="summary" id="summary" aria-label="Week summary"></section>
+
+      <section class="schedule-wrap" aria-labelledby="scheduleTitle">
+        <div class="section-head">
+          <div>
+            <h2 id="scheduleTitle">Weekly Schedule</h2>
+            <p id="weekHint"></p>
+          </div>
+          <div class="schedule-actions">
+            <span id="selectionHint">No cells selected</span>
+            <button class="text-button" id="markClosedButton" type="button">Merge Not open</button>
+            <button class="text-button" id="splitSelectedButton" type="button">Unmerge selected</button>
+            <button class="text-button subtle" id="clearSelectionButton" type="button">Clear selection</button>
+            <button class="text-button subtle" id="clearWeekButton" type="button">Clear week</button>
+          </div>
+        </div>
+
+        <div class="schedule-scroll">
+          <table class="schedule" aria-label="Editable weekly meeting schedule">
+            <thead id="scheduleHead"></thead>
+            <tbody id="scheduleBody"></tbody>
+          </table>
+        </div>
+
+        <datalist id="meetingSuggestions"></datalist>
+        <datalist id="dayLocationSuggestions"></datalist>
+        <datalist id="studentLocationSuggestions"></datalist>
+        <div class="autocomplete-panel" id="studentAutocomplete" hidden></div>
+
+        <div class="legend" aria-label="Status legend">
+          <span class="legend-item"><span class="dot meeting"></span> Meeting</span>
+          <span class="legend-item"><span class="dot closed"></span> Not open</span>
+          <span class="legend-item"><span class="dot pending"></span> Pending note</span>
+          <span class="legend-item"><span class="dot skip"></span> Skip note</span>
+        </div>
+      </section>
+
+      <aside class="students-panel" aria-labelledby="studentsTitle">
+        <div class="section-head">
+          <div>
+            <h2 id="studentsTitle">Student List</h2>
+            <p id="studentCount"></p>
+          </div>
+          <button class="text-button" id="addStudentButton" type="button">Add student</button>
+        </div>
+        <div class="student-list" id="studentList"></div>
+      </aside>
+    </main>
+  </div>
+</body>
+</html>
