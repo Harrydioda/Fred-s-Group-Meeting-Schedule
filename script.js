@@ -10,6 +10,7 @@ const els = {
   toggleWeekendButton: document.querySelector("#toggleWeekendButton"),
   clearWeekButton: document.querySelector("#clearWeekButton"),
   searchInput: document.querySelector("#searchInput"),
+  syncStatus: document.querySelector("#syncStatus"),
   summary: document.querySelector("#summary"),
   weekHint: document.querySelector("#weekHint"),
   mobileDayTabs: document.querySelector("#mobileDayTabs"),
@@ -35,6 +36,10 @@ let isSelecting = false;
 let showWeekend = false;
 let activeAutocompleteInput = null;
 let activeMobileDayIndex = 0;
+let firestoreDb = null;
+let isApplyingCloudState = false;
+let cloudSaveTimer = null;
+let cloudUnsubscribe = null;
 const mobileScheduleQuery = window.matchMedia("(max-width: 760px)");
 
 function init() {
@@ -96,6 +101,11 @@ function init() {
 
   ensureWeek(activeMonday);
   render();
+  initializeCloudSync();
+
+  /* Current time highlight is kept for later use.
+  window.setInterval(render, 60000);
+  */
 }
 
 function loadState() {
@@ -148,6 +158,85 @@ function migrateState(nextState) {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  queueCloudSave();
+}
+
+function initializeCloudSync() {
+  if (!window.firebase || !window.FRED_FIREBASE_CONFIG) {
+    updateSyncStatus("Local only");
+    return;
+  }
+
+  try {
+    if (!firebase.apps.length) {
+      firebase.initializeApp(window.FRED_FIREBASE_CONFIG);
+    }
+
+    firestoreDb = firebase.firestore();
+    firestoreDb.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+
+    const collection = window.FRED_FIRESTORE_COLLECTION || "schedules";
+    const docId = window.FRED_FIRESTORE_DOC_ID || "main";
+    const docRef = firestoreDb.collection(collection).doc(docId);
+
+    updateSyncStatus("Connecting...");
+    cloudUnsubscribe = docRef.onSnapshot(snapshot => {
+      if (!snapshot.exists) {
+        queueCloudSave(true);
+        return;
+      }
+
+      const cloudState = snapshot.data()?.state;
+      if (!cloudState) return;
+
+      isApplyingCloudState = true;
+      state = migrateState(cloudState);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      ensureWeek(activeMonday);
+      selectedCells.clear();
+      render();
+      isApplyingCloudState = false;
+      updateSyncStatus("Synced");
+    }, error => {
+      console.warn("Cloud sync is unavailable.", error);
+      updateSyncStatus("Offline backup");
+    });
+  } catch (error) {
+    console.warn("Firebase could not be initialized.", error);
+    updateSyncStatus("Local only");
+  }
+}
+
+function queueCloudSave(force = false) {
+  if (!firestoreDb || isApplyingCloudState) return;
+
+  updateSyncStatus("Saving...");
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = window.setTimeout(() => saveStateToCloud(), force ? 0 : 350);
+}
+
+async function saveStateToCloud() {
+  if (!firestoreDb) return;
+
+  const collection = window.FRED_FIRESTORE_COLLECTION || "schedules";
+  const docId = window.FRED_FIRESTORE_DOC_ID || "main";
+
+  try {
+    await firestoreDb.collection(collection).doc(docId).set({
+      state,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    updateSyncStatus("Synced");
+  } catch (error) {
+    console.warn("Schedule could not be saved to cloud.", error);
+    updateSyncStatus("Offline backup");
+  }
+}
+
+function updateSyncStatus(label) {
+  if (els.syncStatus) {
+    els.syncStatus.textContent = label;
+  }
 }
 
 function ensureWeek(monday) {
@@ -267,6 +356,8 @@ function renderMobileDayTabs(dates) {
 }
 
 function renderSchedule(week, dates, query) {
+  // Current time highlight is kept for later use:
+  // <td class="time-cell ${isCurrentTimeSlot(time) ? "current-time" : ""}">${time}</td>
   els.scheduleHead.innerHTML = `
     <tr>
       <th class="time-head">Time</th>
@@ -326,11 +417,17 @@ function slotCell(week, date, time, timeIndex, query) {
     : selectedCells.has(cellKey);
   const haystack = normalize(`${value} ${week.locations[dayKey] || ""} ${time}`);
   const highlight = query && haystack.includes(query);
+  /* Current time highlight is kept for later use.
+  const currentSlot = isCurrentTimeSlot(time);
+  const currentDay = isToday(date);
+  */
   const rowspan = closedRun ? ` rowspan="${closedRun.length}"` : "";
   const dataTimes = closedRun ? closedRun.times.join("||") : time;
   const label = closedRun && closedRun.length > 1 ? `Not open (${closedRun.times[0]} to ${closedRun.times[closedRun.times.length - 1].split("-")[1]})` : value;
   const inputReadonly = closedRun ? "readonly" : "";
 
+  // Current time highlight is kept for later use:
+  // <td class="slot ${closedRun ? "merged-slot" : ""} ${currentSlot && currentDay ? "current-day-slot" : ""}"${rowspan} data-date="${dayKey}" data-times="${escapeHtml(dataTimes)}">
   return `
     <td class="slot ${closedRun ? "merged-slot" : ""}"${rowspan} data-date="${dayKey}" data-times="${escapeHtml(dataTimes)}">
       <div class="slot-content ${status} ${closedRun ? "merged" : ""} ${highlight ? "highlight" : ""} ${selected ? "selected" : ""}">
@@ -880,6 +977,29 @@ function isWeekend(date) {
   const day = date.getDay();
   return day === 0 || day === 6;
 }
+
+/* Current time highlight is kept for later use.
+function isToday(date) {
+  const today = new Date();
+  return formatDate(date) === formatDate(today);
+}
+
+function isCurrentTimeSlot(slot) {
+  if (formatDate(activeMonday) !== formatDate(getMonday(new Date()))) {
+    return false;
+  }
+
+  const [start, end] = slot.split("-");
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  return currentMinutes >= timeToMinutes(start) && currentMinutes < timeToMinutes(end);
+}
+
+function timeToMinutes(time) {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+*/
 
 function getMonday(date) {
   const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate());

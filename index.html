@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Fred Meeting Schedule</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js" defer></script>
+  <script src="firebase-config.js" defer></script>
   <script src="data.js" defer></script>
   <script src="script.js" defer></script>
 </head>
@@ -14,7 +17,7 @@
       <div class="topbar-inner">
         <div class="title-block">
           <h1>Fred's Group Meeting Schedule</h1>
-          <p>Please check your time slot.</p>
+          <p>Please check your time slot. <span class="sync-status" id="syncStatus">Local only</span></p>
         </div>
 
         <div class="controls" aria-label="Schedule controls">
