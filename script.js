@@ -12,6 +12,7 @@ const els = {
   searchInput: document.querySelector("#searchInput"),
   summary: document.querySelector("#summary"),
   weekHint: document.querySelector("#weekHint"),
+  mobileDayTabs: document.querySelector("#mobileDayTabs"),
   scheduleHead: document.querySelector("#scheduleHead"),
   scheduleBody: document.querySelector("#scheduleBody"),
   meetingSuggestions: document.querySelector("#meetingSuggestions"),
@@ -33,6 +34,8 @@ let selectedCells = new Set();
 let isSelecting = false;
 let showWeekend = false;
 let activeAutocompleteInput = null;
+let activeMobileDayIndex = 0;
+const mobileScheduleQuery = window.matchMedia("(max-width: 760px)");
 
 function init() {
   els.datePicker.value = formatDate(activeMonday);
@@ -75,6 +78,10 @@ function init() {
     render();
   });
   els.addStudentButton.addEventListener("click", addStudent);
+  mobileScheduleQuery.addEventListener("change", () => {
+    selectedCells.clear();
+    render();
+  });
   document.addEventListener("mouseup", () => {
     isSelecting = false;
   });
@@ -178,17 +185,22 @@ function render() {
   const week = ensureWeek(activeMonday);
   const allDates = weekDates(activeMonday);
   const dates = visibleDates(activeMonday);
+  if (activeMobileDayIndex >= dates.length) {
+    activeMobileDayIndex = 0;
+  }
+  const scheduleDates = isMobileSchedule() ? [dates[activeMobileDayIndex]] : dates;
   const query = normalize(els.searchInput.value);
 
   els.weekHint.textContent = showWeekend
     ? `${formatDisplayDate(allDates[0])} to ${formatDisplayDate(allDates[6])}`
-    : `${formatDisplayDate(allDates[0])} to ${formatDisplayDate(allDates[4])} · weekend hidden`;
+    : `${formatDisplayDate(allDates[0])} to ${formatDisplayDate(allDates[4])} - weekend hidden`;
   els.toggleWeekendButton.textContent = showWeekend ? "Hide weekend" : "Show weekend";
   renderSuggestions();
   renderSummary(week, dates);
-  pruneSelection(dates);
+  renderMobileDayTabs(dates);
+  pruneSelection(scheduleDates);
   renderSelectionHint();
-  renderSchedule(week, dates, query);
+  renderSchedule(week, scheduleDates, query);
   renderStudents(week, dates, query);
 }
 
@@ -231,11 +243,33 @@ function metric(label, value) {
   return `<article class="metric"><span>${label}</span><strong>${value}</strong></article>`;
 }
 
+function renderMobileDayTabs(dates) {
+  els.mobileDayTabs.innerHTML = dates.map((date, index) => `
+    <button
+      class="mobile-day-tab ${index === activeMobileDayIndex ? "active" : ""}"
+      type="button"
+      data-index="${index}"
+      aria-pressed="${index === activeMobileDayIndex ? "true" : "false"}"
+    >
+      <span>${displayWeekday(date)}</span>
+      <strong>${formatDisplayDate(date)}</strong>
+    </button>
+  `).join("");
+
+  els.mobileDayTabs.querySelectorAll(".mobile-day-tab").forEach(button => {
+    button.addEventListener("click", () => {
+      activeMobileDayIndex = Number(button.dataset.index);
+      selectedCells.clear();
+      render();
+    });
+  });
+}
+
 function renderSchedule(week, dates, query) {
   els.scheduleHead.innerHTML = `
     <tr>
       <th class="time-head">Time</th>
-      ${dates.map((date, index) => dayHeader(week, date, index)).join("")}
+      ${dates.map(date => dayHeader(week, date)).join("")}
     </tr>
   `;
 
@@ -249,22 +283,22 @@ function renderSchedule(week, dates, query) {
   bindScheduleEvents(week);
 }
 
-function dayHeader(week, date, index) {
+function dayHeader(week, date) {
   const dayKey = formatDate(date);
   const location = week.locations[dayKey] || "";
 
   return `
     <th>
       <div class="day-title">
-        <strong>${weekdayNames[index]} ${formatDisplayDate(date)}</strong>
-        <span>${index < 5 ? "Weekday" : "Weekend"}</span>
+        <strong>${displayWeekday(date)} ${formatDisplayDate(date)}</strong>
+        <span>${isWeekend(date) ? "Weekend" : "Weekday"}</span>
         <div class="location-combo day-location-combo">
           <input
             class="location-input"
             data-date="${dayKey}"
             value="${escapeHtml(location)}"
             placeholder="Choose or type location"
-            aria-label="${weekdayNames[index]} location"
+            aria-label="${displayWeekday(date)} location"
           >
           <div class="location-menu" hidden>
             ${locationOptionRows("day")}
@@ -472,7 +506,7 @@ function showStudentAutocomplete(input) {
     return `
       <button class="autocomplete-option" type="button" data-name="${escapeHtml(student.name)}">
         <span>${escapeHtml(student.name)}</span>
-        <small>${escapeHtml(student.location || "No location")} · ${statusLabel(status)}</small>
+        <small>${escapeHtml(student.location || "No location")} - ${statusLabel(status)}</small>
       </button>
     `;
   }).join("");
@@ -830,6 +864,20 @@ function weekDates(monday) {
 
 function visibleDates(monday) {
   return weekDates(monday).slice(0, showWeekend ? 7 : 5);
+}
+
+function isMobileSchedule() {
+  return mobileScheduleQuery.matches;
+}
+
+function displayWeekday(date) {
+  const day = date.getDay();
+  return weekdayNames[day === 0 ? 6 : day - 1];
+}
+
+function isWeekend(date) {
+  const day = date.getDay();
+  return day === 0 || day === 6;
 }
 
 function getMonday(date) {
