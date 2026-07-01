@@ -195,6 +195,7 @@ function render() {
     ? `${formatDisplayDate(allDates[0])} to ${formatDisplayDate(allDates[6])}`
     : `${formatDisplayDate(allDates[0])} to ${formatDisplayDate(allDates[4])} - weekend hidden`;
   els.toggleWeekendButton.textContent = showWeekend ? "Hide weekend" : "Show weekend";
+  document.body.classList.toggle("weekend-visible", showWeekend);
   renderSuggestions();
   renderSummary(week, dates);
   renderMobileDayTabs(dates);

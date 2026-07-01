@@ -126,6 +126,10 @@ input[type="search"] {
   min-width: 190px;
 }
 
+input[type="date"] {
+  min-width: 230px;
+}
+
 .search-field input {
   min-width: 250px;
 }
@@ -185,7 +189,7 @@ input[type="search"] {
   margin: 0 auto;
   padding: 22px 24px 32px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 560px;
+  grid-template-columns: minmax(0, 1fr) 480px;
   gap: 20px;
   align-items: start;
 }
@@ -250,7 +254,7 @@ input[type="search"] {
 }
 
 .schedule-scroll {
-  overflow: auto;
+  overflow-x: auto;
 }
 
 .mobile-day-tabs {
@@ -264,7 +268,12 @@ table {
 }
 
 .schedule {
-  min-width: 1180px;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.weekend-visible .schedule {
+  min-width: 1220px;
 }
 
 th,
@@ -281,7 +290,7 @@ td:last-child {
 
 .schedule thead th {
   background: #f9fafb;
-  padding: 10px;
+  padding: 9px 8px;
   text-align: left;
   position: sticky;
   top: 0;
@@ -290,8 +299,8 @@ td:last-child {
 
 .time-head,
 .time-cell {
-  width: 116px;
-  min-width: 116px;
+  width: 92px;
+  min-width: 92px;
   color: var(--muted);
   font-weight: 700;
   background: #fbfcfd;
@@ -301,8 +310,8 @@ td:last-child {
 }
 
 .time-cell {
-  padding: 10px 12px;
-  font-size: 13px;
+  padding: 9px 8px;
+  font-size: 12px;
 }
 
 .day-title {
@@ -323,8 +332,8 @@ td:last-child {
 .location-input {
   width: 100%;
   height: 34px;
-  padding: 0 9px;
-  font-size: 13px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .slot {
@@ -338,11 +347,11 @@ td:last-child {
 .slot-input {
   width: 100%;
   min-height: 38px;
-  padding: 8px 9px;
+  padding: 7px 8px;
   color: var(--ink);
   border-color: transparent;
   background: transparent;
-  font-weight: 700;
+  font-weight: 650;
   line-height: 1.3;
   overflow: hidden;
   resize: none;
@@ -469,13 +478,16 @@ td:last-child {
   max-height: calc(100vh - 122px);
   display: grid;
   grid-template-rows: auto 1fr;
+  min-width: 0;
 }
 
 .student-list {
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 10px;
   display: grid;
   gap: 9px;
+  min-width: 0;
 }
 
 .student {
@@ -484,8 +496,9 @@ td:last-child {
   padding: 10px;
   background: #fff;
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) 52px;
   gap: 8px;
+  min-width: 0;
 }
 
 .student.dragging {
@@ -494,6 +507,7 @@ td:last-child {
 
 .student-drag-handle {
   align-self: start;
+  justify-self: start;
   width: 46px;
   height: 27px;
   border: 1px solid var(--line-strong);
@@ -522,16 +536,19 @@ td:last-child {
 .student-fields {
   display: grid;
   gap: 7px;
+  min-width: 0;
 }
 
 .student-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.05fr) minmax(170px, 1fr) minmax(112px, 0.6fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr) minmax(84px, 0.62fr);
+  gap: 7px;
+  min-width: 0;
 }
 
 .location-combo {
   position: relative;
+  min-width: 0;
 }
 
 .location-combo::after {
@@ -555,12 +572,13 @@ td:last-child {
 .student select,
 .student textarea {
   width: 100%;
-  padding: 9px 10px;
+  min-width: 0;
+  padding: 8px 9px;
   font-size: 13px;
 }
 
 .student select {
-  height: 39px;
+  height: 37px;
 }
 
 .location-menu {
@@ -568,7 +586,8 @@ td:last-child {
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  min-width: 220px;
+  min-width: min(220px, calc(100vw - 32px));
+  max-width: 100%;
   z-index: 40;
   max-height: 210px;
   overflow: auto;
@@ -630,6 +649,8 @@ td:last-child {
 }
 
 .student-status {
+  grid-column: 1 / -1;
+  justify-self: start;
   align-self: start;
   font-size: 12px;
   font-weight: 800;
@@ -637,7 +658,9 @@ td:last-child {
   padding: 4px 8px;
   background: #eef2f7;
   color: #475569;
-  white-space: nowrap;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .student-status.scheduled {
@@ -661,7 +684,7 @@ td:last-child {
   color: var(--danger);
   font-weight: 800;
   padding: 4px 0 0;
-  text-align: right;
+  text-align: left;
 }
 
 .empty {
@@ -774,6 +797,10 @@ td:last-child {
     min-width: 0;
   }
 
+  input[type="date"] {
+    min-height: 46px;
+  }
+
   .field,
   .controls {
     width: 100%;
@@ -800,10 +827,8 @@ td:last-child {
 
   .mobile-day-tabs {
     display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(86px, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
     gap: 8px;
-    overflow-x: auto;
     padding: 10px 12px;
     border-bottom: 1px solid var(--line);
     background: #fbfcfd;
@@ -814,7 +839,7 @@ td:last-child {
     background: #fff;
     color: var(--ink);
     border-radius: 8px;
-    min-height: 48px;
+    min-height: 56px;
     padding: 6px 8px;
     display: grid;
     gap: 2px;
@@ -881,11 +906,11 @@ td:last-child {
   }
 
   .student {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .student-status {
-    grid-column: 2;
+    grid-column: auto;
   }
 
   .student-drag-handle {
