@@ -43,6 +43,8 @@ let firestoreDb = null;
 let isApplyingCloudState = false;
 let cloudSaveTimer = null;
 let cloudUnsubscribe = null;
+let localChangeVersion = 0;
+let savedChangeVersion = 0;
 const mobileScheduleQuery = window.matchMedia("(max-width: 760px)");
 
 function init() {
@@ -188,6 +190,12 @@ function initializeCloudSync() {
         return;
       }
 
+      const hasPendingWrites = Boolean(snapshot.metadata?.hasPendingWrites);
+      const hasUnsavedLocalChanges = localChangeVersion !== savedChangeVersion;
+      if (hasPendingWrites || hasUnsavedLocalChanges) {
+        return;
+      }
+
       const cloudState = snapshot.data()?.state;
       if (!cloudState) return;
 
@@ -212,6 +220,7 @@ function initializeCloudSync() {
 function queueCloudSave(force = false) {
   if (!firestoreDb || isApplyingCloudState) return;
 
+  localChangeVersion += 1;
   updateSyncStatus("Saving...");
   clearTimeout(cloudSaveTimer);
   cloudSaveTimer = window.setTimeout(() => saveStateToCloud(), force ? 0 : 350);
@@ -222,13 +231,16 @@ async function saveStateToCloud() {
 
   const collection = window.FRED_FIRESTORE_COLLECTION || "schedules";
   const docId = window.FRED_FIRESTORE_DOC_ID || "main";
+  const changeVersion = localChangeVersion;
+  const stateSnapshot = structuredClone(state);
 
   try {
     await firestoreDb.collection(collection).doc(docId).set({
-      state,
+      state: stateSnapshot,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
-    updateSyncStatus("Synced");
+    savedChangeVersion = Math.max(savedChangeVersion, changeVersion);
+    updateSyncStatus(savedChangeVersion === localChangeVersion ? "Synced" : "Saving...");
   } catch (error) {
     console.warn("Schedule could not be saved to cloud.", error);
     updateSyncStatus("Offline backup");
