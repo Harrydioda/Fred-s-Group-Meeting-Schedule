@@ -138,13 +138,6 @@ function migrateState(nextState) {
     note: student.note || ""
   }));
 
-  const existingNames = new Set(nextState.students.map(student => normalize(student.name)).filter(Boolean));
-  DEFAULT_STUDENTS.forEach(defaultStudent => {
-    if (!existingNames.has(normalize(defaultStudent.name))) {
-      nextState.students.push(structuredClone(defaultStudent));
-    }
-  });
-
   const activeMeetingStudent = String(nextState.activeMeetingStudent || "").trim();
   nextState.activeMeetingStudent = nextState.students.some(student => {
     return activeMeetingStudent && normalize(student.name) === normalize(activeMeetingStudent);
@@ -626,8 +619,13 @@ function bindScheduleEvents(week) {
   document.querySelectorAll(".slot-input").forEach(input => {
     autoResizeTextarea(input);
     input.addEventListener("focus", () => showStudentAutocomplete(input));
-    input.addEventListener("input", () => {
+    input.addEventListener("input", event => {
       autoResizeTextarea(input);
+      if (event.isComposing) return;
+      if (!input.value.trim()) {
+        setSlotValue(week, input.dataset.date, input.dataset.time, "");
+        return;
+      }
       showStudentAutocomplete(input);
     });
     input.addEventListener("change", event => {
@@ -892,7 +890,7 @@ function renderStudents(week, dates, query) {
               aria-pressed="${currentTurn ? "true" : "false"}"
               ${!student.name || currentTurn ? "disabled" : ""}
             >${currentTurn ? "On turn" : "My turn"}</button>
-            <button class="delete-student" type="button">Remove</button>
+            <button class="delete-student" type="button" aria-label="Remove ${escapeHtml(student.name || "student")}">Remove person</button>
           </div>
         </div>
         <button class="student-drag-handle" type="button" draggable="${student.name ? "true" : "false"}" aria-label="Drag ${escapeHtml(student.name || "student")} to schedule" title="Hold and drag to schedule">Drag</button>
@@ -919,14 +917,7 @@ function bindStudentEvents() {
     statusInput.addEventListener("change", () => updateStudent(index, "status", statusInput.value));
     noteInput.addEventListener("change", () => updateStudent(index, "note", noteInput.value.trim()));
     takeTurnButton.addEventListener("click", () => startCurrentTurn(card.dataset.studentName));
-    deleteButton.addEventListener("click", () => {
-      if (isCurrentMeetingStudent(state.students[index]?.name)) {
-        state.activeMeetingStudent = "";
-      }
-      state.students.splice(index, 1);
-      saveState();
-      render();
-    });
+    deleteButton.addEventListener("click", () => removeStudent(index));
 
     dragHandle.addEventListener("dragstart", event => {
       const studentName = card.dataset.studentName || "";
@@ -952,6 +943,32 @@ function updateStudent(index, field, value) {
   if (field === "name" && isCurrentMeetingStudent(previousName)) {
     state.activeMeetingStudent = value;
   }
+  saveState();
+  render();
+}
+
+function removeStudent(index) {
+  const student = state.students[index];
+  if (!student) return;
+
+  const targetName = normalize(student.name);
+  if (targetName) {
+    Object.values(state.weeks || {}).forEach(week => {
+      Object.values(week.slots || {}).forEach(daySlots => {
+        Object.keys(daySlots || {}).forEach(time => {
+          if (normalize(daySlots[time]) === targetName) {
+            delete daySlots[time];
+          }
+        });
+      });
+    });
+  }
+
+  if (isCurrentMeetingStudent(student.name)) {
+    state.activeMeetingStudent = "";
+  }
+
+  state.students.splice(index, 1);
   saveState();
   render();
 }
