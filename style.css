@@ -653,6 +653,27 @@ td:last-child {
   box-shadow: 0 0 0 3px rgba(244, 163, 163, 0.24);
 }
 
+.blank-student {
+  border-style: dashed;
+  background: #f8fafc;
+}
+
+.blank-student-fields {
+  align-content: start;
+  gap: 4px;
+}
+
+.blank-student-name {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.blank-student-description {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .student.current-turn {
   position: relative;
   z-index: 1;
@@ -837,6 +858,11 @@ td:last-child {
 .student-status.skip {
   background: var(--skip);
   color: var(--skip-ink);
+}
+
+.student-status.blank {
+  background: #e2e8f0;
+  color: #475569;
 }
 
 .delete-student {

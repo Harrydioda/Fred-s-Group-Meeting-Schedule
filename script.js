@@ -1,4 +1,12 @@
 const STORAGE_KEY = "fred-meeting-schedule-v2";
+const CLEAR_SLOT_DRAG_VALUE = "__fred_clear_meeting_slot__";
+const BLANK_STUDENT = Object.freeze({
+  name: "Blank / 空白",
+  location: "Clear meeting slot",
+  status: "open",
+  note: "blank empty clear 清除 空白",
+  clearsSlot: true
+});
 
 const weekdayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -84,10 +92,7 @@ function init() {
   els.endTurnButton.addEventListener("click", endCurrentTurn);
   els.markClosedButton.addEventListener("click", markSelectedClosed);
   els.splitSelectedButton.addEventListener("click", splitSelected);
-  els.clearSelectionButton.addEventListener("click", () => {
-    selectedCells.clear();
-    render();
-  });
+  els.clearSelectionButton.addEventListener("click", clearSelectedSlots);
   els.addStudentButton.addEventListener("click", addStudent);
   mobileScheduleQuery.addEventListener("change", () => {
     selectedCells.clear();
@@ -315,7 +320,7 @@ function renderCurrentTurn() {
 }
 
 function renderSuggestions() {
-  const options = ["Not open", ...state.students.map(student => student.name).filter(Boolean)];
+  const options = [BLANK_STUDENT.name, "Not open", ...state.students.map(student => student.name).filter(Boolean)];
   els.meetingSuggestions.innerHTML = options
     .map(option => `<option value="${escapeHtml(option)}"></option>`)
     .join("");
@@ -651,12 +656,14 @@ function bindScheduleEvents(week) {
 }
 
 function setSlotValue(week, dayKey, time, value) {
+  const nextValue = normalizeSlotValue(value);
+
   if (!week.slots[dayKey]) {
     week.slots[dayKey] = {};
   }
 
-  if (value) {
-    week.slots[dayKey][time] = value;
+  if (nextValue) {
+    week.slots[dayKey][time] = nextValue;
   } else {
     delete week.slots[dayKey][time];
   }
@@ -681,9 +688,16 @@ function showStudentAutocomplete(input) {
   els.studentAutocomplete.innerHTML = matches.map(student => {
     const status = normalizeStudentStatus(student.status, student.note);
     return `
-      <button class="autocomplete-option" type="button" data-name="${escapeHtml(student.name)}">
+      <button
+        class="autocomplete-option"
+        type="button"
+        data-name="${escapeHtml(student.name)}"
+        data-clear-slot="${student.clearsSlot ? "true" : "false"}"
+      >
         <span>${escapeHtml(student.name)}</span>
-        <small>${escapeHtml(student.location || "No location")} - ${statusLabel(status)}</small>
+        <small>${student.clearsSlot
+          ? "Clear this meeting slot"
+          : `${escapeHtml(student.location || "No location")} - ${statusLabel(status)}`}</small>
       </button>
     `;
   }).join("");
@@ -703,7 +717,7 @@ function showStudentAutocomplete(input) {
         targetWeek,
         activeAutocompleteInput.dataset.date,
         activeAutocompleteInput.dataset.time,
-        option.dataset.name
+        option.dataset.clearSlot === "true" ? "" : option.dataset.name
       );
     });
   });
@@ -717,12 +731,23 @@ function hideStudentAutocomplete() {
 
 function matchingStudents(query) {
   const text = normalize(query);
-  const students = state.students.filter(student => student.name);
+  const students = [BLANK_STUDENT, ...state.students.filter(student => student.name)];
   if (!text) return students;
 
   return students.filter(student => {
     return normalize(`${student.name} ${student.location} ${student.status} ${student.note}`).includes(text);
   });
+}
+
+function normalizeSlotValue(value) {
+  const text = String(value || "").trim();
+  const normalized = normalize(text);
+  const clearsSlot = text === CLEAR_SLOT_DRAG_VALUE
+    || normalized === "blank"
+    || normalized === "空白"
+    || normalized === normalize(BLANK_STUDENT.name);
+
+  return clearsSlot ? "" : text;
 }
 
 function markSelectedClosed() {
@@ -746,6 +771,22 @@ function splitSelected() {
       delete week.slots[dayKey][time];
     }
   });
+  saveState();
+  render();
+}
+
+function clearSelectedSlots() {
+  if (!selectedCells.size) return;
+
+  const week = ensureWeek(activeMonday);
+  selectedCells.forEach(key => {
+    const { dayKey, time } = parseCellKey(key);
+    if (week.slots[dayKey]) {
+      delete week.slots[dayKey][time];
+    }
+  });
+
+  selectedCells.clear();
   saveState();
   render();
 }
@@ -855,15 +896,36 @@ function renderStudents(week, dates, query) {
     const haystack = normalize(`${student.location} ${student.status} ${student.name} ${student.note}`);
     return !query || haystack.includes(query);
   });
+  const blankMatches = !query || normalize(
+    `${BLANK_STUDENT.name} ${BLANK_STUDENT.location} ${BLANK_STUDENT.note}`
+  ).includes(query);
+  const visibleCount = filtered.length + (blankMatches ? 1 : 0);
 
-  els.studentCount.textContent = `${filtered.length} / ${state.students.length}`;
+  els.studentCount.textContent = `${visibleCount} / ${state.students.length + 1}`;
 
-  if (!filtered.length) {
+  if (!visibleCount) {
     els.studentList.innerHTML = `<div class="empty">No students match this search.</div>`;
     return;
   }
 
-  els.studentList.innerHTML = filtered.map(student => {
+  const blankCard = blankMatches ? `
+    <article class="student blank-student ${query ? "active" : ""}" data-clear-slot="true">
+      <div class="student-fields blank-student-fields">
+        <strong class="blank-student-name">${escapeHtml(BLANK_STUDENT.name)}</strong>
+        <span class="blank-student-description">Drag this card onto a meeting slot to clear it.</span>
+      </div>
+      <button
+        class="student-drag-handle"
+        type="button"
+        draggable="true"
+        aria-label="Drag blank to clear a meeting slot"
+        title="Hold and drag to clear a meeting slot"
+      >Drag</button>
+      <span class="student-status blank">Clear slot</span>
+    </article>
+  ` : "";
+
+  const studentCards = filtered.map(student => {
     const index = state.students.indexOf(student);
     const status = studentStatus(week, dates, student);
     const active = query && normalize(student.name).includes(query);
@@ -909,19 +971,26 @@ function renderStudents(week, dates, query) {
     `;
   }).join("");
 
+  els.studentList.innerHTML = blankCard + studentCards;
+
   bindStudentEvents();
   bindLocationControls(week, ".students-panel");
 }
 
 function bindStudentEvents() {
   els.studentList.querySelectorAll(".student").forEach(card => {
+    const dragHandle = card.querySelector(".student-drag-handle");
+    if (card.dataset.clearSlot === "true") {
+      bindStudentDrag(card, dragHandle, CLEAR_SLOT_DRAG_VALUE);
+      return;
+    }
+
     const index = Number(card.dataset.index);
     const nameInput = card.querySelector(".student-name-input");
     const statusInput = card.querySelector(".student-status-input");
     const noteInput = card.querySelector(".student-note-input");
     const takeTurnButton = card.querySelector(".take-turn-button");
     const deleteButton = card.querySelector(".delete-student");
-    const dragHandle = card.querySelector(".student-drag-handle");
 
     nameInput.addEventListener("change", () => updateStudent(index, "name", nameInput.value.trim()));
     statusInput.addEventListener("change", () => updateStudent(index, "status", statusInput.value));
@@ -929,21 +998,24 @@ function bindStudentEvents() {
     takeTurnButton.addEventListener("click", () => startCurrentTurn(card.dataset.studentName));
     deleteButton.addEventListener("click", () => removeStudent(index));
 
-    dragHandle.addEventListener("dragstart", event => {
-      const studentName = card.dataset.studentName || "";
-      if (!studentName) {
-        event.preventDefault();
-        return;
-      }
+    bindStudentDrag(card, dragHandle, card.dataset.studentName || "");
+  });
+}
 
-      event.dataTransfer.effectAllowed = "copy";
-      event.dataTransfer.setData("text/plain", studentName);
-      card.classList.add("dragging");
-    });
+function bindStudentDrag(card, dragHandle, value) {
+  dragHandle.addEventListener("dragstart", event => {
+    if (!value) {
+      event.preventDefault();
+      return;
+    }
 
-    dragHandle.addEventListener("dragend", () => {
-      card.classList.remove("dragging");
-    });
+    event.dataTransfer.effectAllowed = "copy";
+    event.dataTransfer.setData("text/plain", value);
+    card.classList.add("dragging");
+  });
+
+  dragHandle.addEventListener("dragend", () => {
+    card.classList.remove("dragging");
   });
 }
 
