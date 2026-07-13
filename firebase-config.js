@@ -10,3 +10,4 @@ window.FRED_FIREBASE_CONFIG = {
 
 window.FRED_FIRESTORE_COLLECTION = "schedules";
 window.FRED_FIRESTORE_DOC_ID = "main";
+window.FRED_ADMIN_COLLECTION = "admins";

@@ -11,8 +11,20 @@ const els = {
   clearWeekButton: document.querySelector("#clearWeekButton"),
   searchInput: document.querySelector("#searchInput"),
   syncStatus: document.querySelector("#syncStatus"),
+  adminAccessStatus: document.querySelector("#adminAccessStatus"),
+  adminLoginButton: document.querySelector("#adminLoginButton"),
+  adminLogoutButton: document.querySelector("#adminLogoutButton"),
+  adminLoginModal: document.querySelector("#adminLoginModal"),
+  adminLoginForm: document.querySelector("#adminLoginForm"),
+  adminEmailInput: document.querySelector("#adminEmailInput"),
+  adminPasswordInput: document.querySelector("#adminPasswordInput"),
+  adminLoginError: document.querySelector("#adminLoginError"),
+  adminLoginCancelButton: document.querySelector("#adminLoginCancelButton"),
+  adminLoginSubmitButton: document.querySelector("#adminLoginSubmitButton"),
   summary: document.querySelector("#summary"),
   weekHint: document.querySelector("#weekHint"),
+  currentTurnLabel: document.querySelector("#currentTurnLabel"),
+  endTurnButton: document.querySelector("#endTurnButton"),
   mobileDayTabs: document.querySelector("#mobileDayTabs"),
   scheduleHead: document.querySelector("#scheduleHead"),
   scheduleBody: document.querySelector("#scheduleBody"),
@@ -38,9 +50,14 @@ let activeAutocompleteInput = null;
 let activeMobileDayIndex = 0;
 let activeSummaryCategory = null;
 let firestoreDb = null;
+let firebaseAuth = null;
+let currentAdminUser = null;
+let isAdmin = false;
+let adminAuthAvailable = false;
 let isApplyingCloudState = false;
 let cloudSaveTimer = null;
 let cloudUnsubscribe = null;
+let cloudDocumentExists = false;
 const mobileScheduleQuery = window.matchMedia("(max-width: 760px)");
 
 function init() {
@@ -69,6 +86,7 @@ function init() {
   });
 
   els.clearWeekButton.addEventListener("click", () => {
+    if (!requireAdmin()) return;
     const key = formatDate(activeMonday);
       state.weeks[key] = createBlankWeek(activeMonday);
     selectedCells.clear();
@@ -77,6 +95,11 @@ function init() {
   });
 
   els.searchInput.addEventListener("input", render);
+  els.adminLoginButton.addEventListener("click", openAdminLogin);
+  els.adminLogoutButton.addEventListener("click", signOutAdmin);
+  els.adminLoginCancelButton.addEventListener("click", closeAdminLogin);
+  els.adminLoginForm.addEventListener("submit", handleAdminLogin);
+  els.endTurnButton.addEventListener("click", endCurrentTurn);
   els.markClosedButton.addEventListener("click", markSelectedClosed);
   els.splitSelectedButton.addEventListener("click", splitSelected);
   els.clearSelectionButton.addEventListener("click", () => {
@@ -97,6 +120,9 @@ function init() {
     }
     if (!event.target.closest(".location-combo")) {
       closeLocationMenus();
+    }
+    if (event.target === els.adminLoginModal) {
+      closeAdminLogin();
     }
   });
 
@@ -142,6 +168,11 @@ function migrateState(nextState) {
     }
   });
 
+  const activeMeetingStudent = String(nextState.activeMeetingStudent || "").trim();
+  nextState.activeMeetingStudent = nextState.students.some(student => {
+    return activeMeetingStudent && normalize(student.name) === normalize(activeMeetingStudent);
+  }) ? activeMeetingStudent : "";
+
   nextState.studentLocationOptions = uniqueValues(
     Array.isArray(nextState.studentLocationOptions)
       ? nextState.studentLocationOptions
@@ -163,8 +194,9 @@ function saveState() {
 }
 
 function initializeCloudSync() {
-  if (!window.firebase || !window.FRED_FIREBASE_CONFIG) {
+  if (!window.firebase || !window.FRED_FIREBASE_CONFIG || !firebase.auth) {
     updateSyncStatus("Local only");
+    updateAdminAccess("Admin login unavailable");
     return;
   }
 
@@ -174,7 +206,11 @@ function initializeCloudSync() {
     }
 
     firestoreDb = firebase.firestore();
+    firebaseAuth = firebase.auth();
+    adminAuthAvailable = true;
+    renderAdminAccess();
     firestoreDb.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+    firebaseAuth.onAuthStateChanged(handleAdminAuthState);
 
     const collection = window.FRED_FIRESTORE_COLLECTION || "schedules";
     const docId = window.FRED_FIRESTORE_DOC_ID || "main";
@@ -182,8 +218,9 @@ function initializeCloudSync() {
 
     updateSyncStatus("Connecting...");
     cloudUnsubscribe = docRef.onSnapshot(snapshot => {
+      cloudDocumentExists = snapshot.exists;
       if (!snapshot.exists) {
-        queueCloudSave(true);
+        if (isAdmin) queueCloudSave(true);
         return;
       }
 
@@ -204,8 +241,150 @@ function initializeCloudSync() {
     });
   } catch (error) {
     console.warn("Firebase could not be initialized.", error);
+    adminAuthAvailable = false;
     updateSyncStatus("Local only");
+    updateAdminAccess("Admin login unavailable");
   }
+}
+
+async function handleAdminAuthState(user) {
+  const verified = user ? await isApprovedAdmin(user) : false;
+  if (firebaseAuth?.currentUser?.uid !== user?.uid) return;
+
+  currentAdminUser = verified ? user : null;
+  isAdmin = verified;
+
+  if (user && !verified) {
+    await firebaseAuth.signOut().catch(() => {});
+    if (!els.adminLoginModal.hidden) {
+      showAdminLoginError("This account is not approved as an administrator.");
+    }
+  }
+
+  selectedCells.clear();
+  render();
+
+  if (verified) {
+    if (!cloudDocumentExists) queueCloudSave(true);
+    closeAdminLogin();
+  }
+}
+
+async function isApprovedAdmin(user) {
+  if (!firestoreDb || !user?.uid) return false;
+
+  try {
+    const collection = window.FRED_ADMIN_COLLECTION || "admins";
+    const snapshot = await firestoreDb.collection(collection).doc(user.uid).get();
+    return snapshot.exists && snapshot.data()?.enabled !== false;
+  } catch (error) {
+    console.warn("Administrator access could not be verified.", error);
+    return false;
+  }
+}
+
+function openAdminLogin() {
+  if (!firebaseAuth) {
+    updateAdminAccess("Admin login unavailable");
+    return;
+  }
+
+  els.adminLoginError.textContent = "";
+  els.adminPasswordInput.value = "";
+  els.adminLoginModal.hidden = false;
+  window.setTimeout(() => els.adminEmailInput.focus(), 0);
+}
+
+function closeAdminLogin() {
+  els.adminLoginModal.hidden = true;
+  els.adminLoginError.textContent = "";
+  els.adminLoginSubmitButton.disabled = false;
+  els.adminLoginSubmitButton.textContent = "Log in";
+}
+
+async function handleAdminLogin(event) {
+  event.preventDefault();
+  if (!firebaseAuth || !firestoreDb) {
+    showAdminLoginError("Firebase Authentication is unavailable.");
+    return;
+  }
+
+  const email = els.adminEmailInput.value.trim();
+  const password = els.adminPasswordInput.value;
+  if (!email || !password) return;
+
+  els.adminLoginSubmitButton.disabled = true;
+  els.adminLoginSubmitButton.textContent = "Checking...";
+  els.adminLoginError.textContent = "";
+
+  try {
+    const credential = await firebaseAuth.signInWithEmailAndPassword(email, password);
+    const verified = await isApprovedAdmin(credential.user);
+    if (!verified) {
+      await firebaseAuth.signOut();
+      showAdminLoginError("This account is not approved as an administrator.");
+      return;
+    }
+
+    currentAdminUser = credential.user;
+    isAdmin = true;
+    selectedCells.clear();
+    render();
+    closeAdminLogin();
+  } catch (error) {
+    console.warn("Administrator login failed.", error);
+    showAdminLoginError("Login failed. Check the email and password.");
+  } finally {
+    els.adminLoginSubmitButton.disabled = false;
+    els.adminLoginSubmitButton.textContent = "Log in";
+  }
+}
+
+async function signOutAdmin() {
+  if (!firebaseAuth) return;
+
+  await firebaseAuth.signOut().catch(error => {
+    console.warn("Administrator logout failed.", error);
+  });
+  currentAdminUser = null;
+  isAdmin = false;
+  selectedCells.clear();
+  render();
+}
+
+function showAdminLoginError(message) {
+  els.adminLoginError.textContent = message;
+  els.adminLoginSubmitButton.disabled = false;
+  els.adminLoginSubmitButton.textContent = "Log in";
+}
+
+function renderAdminAccess() {
+  document.body.classList.toggle("admin-mode", isAdmin);
+  document.body.classList.toggle("view-only", !isAdmin);
+  els.adminLoginButton.hidden = isAdmin;
+  els.adminLoginButton.disabled = !adminAuthAvailable;
+  els.adminLogoutButton.hidden = !isAdmin;
+  els.addStudentButton.disabled = !isAdmin;
+  els.clearWeekButton.disabled = !isAdmin;
+
+  if (!adminAuthAvailable) {
+    updateAdminAccess("Admin login unavailable");
+  } else if (isAdmin) {
+    updateAdminAccess(`Admin: ${currentAdminUser?.email || "approved user"}`, true);
+  } else {
+    updateAdminAccess("View only");
+  }
+}
+
+function updateAdminAccess(label, active = false) {
+  els.adminAccessStatus.textContent = label;
+  els.adminAccessStatus.classList.toggle("active", active);
+}
+
+function requireAdmin() {
+  if (isAdmin) return true;
+  openAdminLogin();
+  return false;
 }
 
 function queueCloudSave(force = false) {
@@ -223,10 +402,18 @@ async function saveStateToCloud() {
   const docId = window.FRED_FIRESTORE_DOC_ID || "main";
 
   try {
-    await firestoreDb.collection(collection).doc(docId).set({
-      state,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    const docRef = firestoreDb.collection(collection).doc(docId);
+    if (isAdmin) {
+      await docRef.set({
+        state,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    } else {
+      await docRef.update({
+        "state.activeMeetingStudent": state.activeMeetingStudent || "",
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
     updateSyncStatus("Synced");
   } catch (error) {
     console.warn("Schedule could not be saved to cloud.", error);
@@ -243,7 +430,10 @@ function updateSyncStatus(label) {
 function ensureWeek(monday) {
   const key = formatDate(monday);
   if (!state.weeks[key]) {
-    state.weeks[key] = createBlankWeek(monday);
+    const blankWeek = createBlankWeek(monday);
+    if (!isAdmin) return blankWeek;
+
+    state.weeks[key] = blankWeek;
     saveState();
   }
   return state.weeks[key];
@@ -281,11 +471,13 @@ function render() {
   const scheduleDates = isMobileSchedule() ? [dates[activeMobileDayIndex]] : dates;
   const query = normalize(els.searchInput.value);
 
+  renderAdminAccess();
   els.weekHint.textContent = showWeekend
     ? `${formatDisplayDate(allDates[0])} to ${formatDisplayDate(allDates[6])}`
     : `${formatDisplayDate(allDates[0])} to ${formatDisplayDate(allDates[4])} - weekend hidden`;
   els.toggleWeekendButton.textContent = showWeekend ? "Hide weekend" : "Show weekend";
   document.body.classList.toggle("weekend-visible", showWeekend);
+  renderCurrentTurn();
   renderSuggestions();
   renderSummary(week, dates);
   renderMobileDayTabs(dates);
@@ -293,6 +485,13 @@ function render() {
   renderSelectionHint();
   renderSchedule(week, scheduleDates, query);
   renderStudents(week, dates, query);
+}
+
+function renderCurrentTurn() {
+  const activeName = state.activeMeetingStudent || "";
+  els.currentTurnLabel.textContent = activeName ? `Current turn: ${activeName}` : "Current turn: No one";
+  els.currentTurnLabel.classList.toggle("active", Boolean(activeName));
+  els.endTurnButton.disabled = !activeName;
 }
 
 function renderSuggestions() {
@@ -439,6 +638,7 @@ function dayHeader(week, date) {
             value="${escapeHtml(location)}"
             placeholder="Choose or type location"
             aria-label="${displayWeekday(date)} location"
+            ${isAdmin ? "" : "readonly aria-readonly=\"true\""}
           >
           <div class="location-menu" hidden>
             ${locationOptionRows("day")}
@@ -465,6 +665,7 @@ function slotCell(week, date, time, timeIndex, query) {
     : selectedCells.has(cellKey);
   const haystack = normalize(`${value} ${week.locations[dayKey] || ""} ${time}`);
   const highlight = query && haystack.includes(query);
+  const currentTurn = isCurrentMeetingStudent(value);
   /* Current time highlight is kept for later use.
   const currentSlot = isCurrentTimeSlot(time);
   const currentDay = isToday(date);
@@ -472,13 +673,13 @@ function slotCell(week, date, time, timeIndex, query) {
   const rowspan = closedRun ? ` rowspan="${closedRun.length}"` : "";
   const dataTimes = closedRun ? closedRun.times.join("||") : time;
   const label = closedRun && closedRun.length > 1 ? `Not open (${closedRun.times[0]} to ${closedRun.times[closedRun.times.length - 1].split("-")[1]})` : value;
-  const inputReadonly = closedRun ? "readonly" : "";
+  const inputReadonly = closedRun || !isAdmin ? "readonly aria-readonly=\"true\"" : "";
 
   // Current time highlight is kept for later use:
   // <td class="slot ${closedRun ? "merged-slot" : ""} ${currentSlot && currentDay ? "current-day-slot" : ""}"${rowspan} data-date="${dayKey}" data-times="${escapeHtml(dataTimes)}">
   return `
     <td class="slot ${closedRun ? "merged-slot" : ""}"${rowspan} data-date="${dayKey}" data-times="${escapeHtml(dataTimes)}">
-      <div class="slot-content ${status} ${closedRun ? "merged" : ""} ${highlight ? "highlight" : ""} ${selected ? "selected" : ""}">
+      <div class="slot-content ${status} ${closedRun ? "merged" : ""} ${highlight ? "highlight" : ""} ${selected ? "selected" : ""} ${currentTurn ? "current-turn" : ""}">
         <textarea
           class="slot-input"
           data-date="${dayKey}"
@@ -494,6 +695,8 @@ function slotCell(week, date, time, timeIndex, query) {
 }
 
 function bindLocationControls(week, rootSelector = document) {
+  if (!isAdmin) return;
+
   const root = typeof rootSelector === "string" ? document.querySelector(rootSelector) : rootSelector;
   if (!root) return;
 
@@ -551,6 +754,8 @@ function bindLocationControls(week, rootSelector = document) {
 }
 
 function updateDayLocation(week, dayKey, value) {
+  if (!requireAdmin()) return;
+
   week.locations[dayKey] = value;
   addLocationOption("day", value);
   saveState();
@@ -560,6 +765,8 @@ function updateDayLocation(week, dayKey, value) {
 function bindScheduleEvents(week) {
   document.querySelectorAll(".slot[data-date]").forEach(cell => {
     cell.addEventListener("mousedown", event => {
+      if (!isAdmin) return;
+
       const usesSelectionShortcut = event.ctrlKey || event.metaKey || event.shiftKey;
       if (event.target.classList.contains("slot-input") && !event.target.readOnly && !usesSelectionShortcut) {
         return;
@@ -583,6 +790,7 @@ function bindScheduleEvents(week) {
     });
 
     cell.addEventListener("dragover", event => {
+      if (!isAdmin) return;
       event.preventDefault();
       cell.classList.add("drag-over");
     });
@@ -594,6 +802,8 @@ function bindScheduleEvents(week) {
     cell.addEventListener("drop", event => {
       event.preventDefault();
       cell.classList.remove("drag-over");
+      if (!isAdmin) return;
+
       const studentName = event.dataTransfer.getData("text/plain").trim();
       if (!studentName) return;
 
@@ -626,6 +836,8 @@ function bindScheduleEvents(week) {
 }
 
 function setSlotValue(week, dayKey, time, value) {
+  if (!requireAdmin()) return;
+
   if (!week.slots[dayKey]) {
     week.slots[dayKey] = {};
   }
@@ -642,7 +854,7 @@ function setSlotValue(week, dayKey, time, value) {
 }
 
 function showStudentAutocomplete(input) {
-  if (input.readOnly) return;
+  if (!isAdmin || input.readOnly) return;
 
   activeAutocompleteInput = input;
   const matches = matchingStudents(input.value).slice(0, 8);
@@ -701,6 +913,8 @@ function matchingStudents(query) {
 }
 
 function markSelectedClosed() {
+  if (!requireAdmin()) return;
+
   const week = ensureWeek(activeMonday);
   selectedCells.forEach(key => {
     const { dayKey, time } = parseCellKey(key);
@@ -714,6 +928,8 @@ function markSelectedClosed() {
 }
 
 function splitSelected() {
+  if (!requireAdmin()) return;
+
   const week = ensureWeek(activeMonday);
   selectedCells.forEach(key => {
     const { dayKey, time } = parseCellKey(key);
@@ -775,11 +991,13 @@ function cellTimesFromElement(cell) {
 
 function renderSelectionHint() {
   const count = selectedCells.size;
-  const shortcutHint = "Ctrl/⌘+click: cell · Shift+click: column";
+  const shortcutHint = isAdmin
+    ? "Ctrl/⌘+click: cell · Shift+click: column"
+    : "View only · Admin login required to edit";
   els.selectionHint.textContent = count ? `${count} cells selected · ${shortcutHint}` : shortcutHint;
-  els.markClosedButton.disabled = count === 0;
-  els.splitSelectedButton.disabled = count === 0;
-  els.clearSelectionButton.disabled = count === 0;
+  els.markClosedButton.disabled = !isAdmin || count === 0;
+  els.splitSelectedButton.disabled = !isAdmin || count === 0;
+  els.clearSelectionButton.disabled = !isAdmin || count === 0;
 }
 
 function pruneSelection(dates) {
@@ -843,33 +1061,43 @@ function renderStudents(week, dates, query) {
     const status = studentStatus(week, dates, student);
     const active = query && normalize(student.name).includes(query);
     const currentStatus = normalizeStudentStatus(student.status, student.note);
+    const currentTurn = isCurrentMeetingStudent(student.name);
 
     return `
-      <article class="student ${active ? "active" : ""}" data-index="${index}" data-student-name="${escapeHtml(student.name)}">
+      <article class="student ${active ? "active" : ""} ${currentTurn ? "current-turn" : ""}" data-index="${index}" data-student-name="${escapeHtml(student.name)}">
         <div class="student-fields">
           <div class="student-row">
-            <input class="student-name-input" value="${escapeHtml(student.name)}" placeholder="Name" aria-label="Student name">
+            <input class="student-name-input" value="${escapeHtml(student.name)}" placeholder="Name" aria-label="Student name" ${isAdmin ? "" : "disabled"}>
             <div class="location-combo">
               <input
                 class="student-location-input"
                 value="${escapeHtml(student.location)}"
                 placeholder="Location"
                 aria-label="Student location"
+                ${isAdmin ? "" : "disabled"}
               >
               <div class="location-menu" hidden>
                 ${locationOptionRows("student")}
               </div>
             </div>
-            <select class="student-status-input" aria-label="Student status">
+            <select class="student-status-input" aria-label="Student status" ${isAdmin ? "" : "disabled"}>
               ${STUDENT_STATUS_OPTIONS.map(option => `
                 <option value="${option}" ${option === currentStatus ? "selected" : ""}>${statusLabel(option)}</option>
               `).join("")}
             </select>
           </div>
-          <textarea class="student-note-input" placeholder="Note" aria-label="Student note">${escapeHtml(student.note)}</textarea>
-          <button class="delete-student" type="button">Remove</button>
+          <textarea class="student-note-input" placeholder="Note" aria-label="Student note" ${isAdmin ? "" : "disabled"}>${escapeHtml(student.note)}</textarea>
+          <div class="student-actions">
+            <button
+              class="take-turn-button"
+              type="button"
+              aria-pressed="${currentTurn ? "true" : "false"}"
+              ${!student.name || currentTurn ? "disabled" : ""}
+            >${currentTurn ? "On turn" : "My turn"}</button>
+            <button class="delete-student" type="button" ${isAdmin ? "" : "disabled"}>Remove</button>
+          </div>
         </div>
-        <button class="student-drag-handle" type="button" draggable="${student.name ? "true" : "false"}" aria-label="Drag ${escapeHtml(student.name || "student")} to schedule" title="Hold and drag to schedule">Drag</button>
+        <button class="student-drag-handle" type="button" draggable="${isAdmin && student.name ? "true" : "false"}" ${isAdmin ? "" : "disabled"} aria-label="Drag ${escapeHtml(student.name || "student")} to schedule" title="Hold and drag to schedule">Drag</button>
         <span class="student-status ${status.className}">${status.label}</span>
       </article>
     `;
@@ -885,13 +1113,20 @@ function bindStudentEvents() {
     const nameInput = card.querySelector(".student-name-input");
     const statusInput = card.querySelector(".student-status-input");
     const noteInput = card.querySelector(".student-note-input");
+    const takeTurnButton = card.querySelector(".take-turn-button");
     const deleteButton = card.querySelector(".delete-student");
     const dragHandle = card.querySelector(".student-drag-handle");
 
     nameInput.addEventListener("change", () => updateStudent(index, "name", nameInput.value.trim()));
     statusInput.addEventListener("change", () => updateStudent(index, "status", statusInput.value));
     noteInput.addEventListener("change", () => updateStudent(index, "note", noteInput.value.trim()));
+    takeTurnButton.addEventListener("click", () => startCurrentTurn(card.dataset.studentName));
     deleteButton.addEventListener("click", () => {
+      if (!requireAdmin()) return;
+
+      if (isCurrentMeetingStudent(state.students[index]?.name)) {
+        state.activeMeetingStudent = "";
+      }
       state.students.splice(index, 1);
       saveState();
       render();
@@ -916,12 +1151,42 @@ function bindStudentEvents() {
 }
 
 function updateStudent(index, field, value) {
+  if (!requireAdmin()) return;
+
+  const previousName = state.students[index].name;
   state.students[index][field] = value;
+  if (field === "name" && isCurrentMeetingStudent(previousName)) {
+    state.activeMeetingStudent = value;
+  }
   saveState();
   render();
 }
 
+function startCurrentTurn(name) {
+  const student = state.students.find(item => normalize(item.name) === normalize(name));
+  if (!student?.name) return;
+
+  state.activeMeetingStudent = student.name;
+  saveState();
+  render();
+}
+
+function endCurrentTurn() {
+  if (!state.activeMeetingStudent) return;
+
+  state.activeMeetingStudent = "";
+  saveState();
+  render();
+}
+
+function isCurrentMeetingStudent(name) {
+  const activeName = normalize(state.activeMeetingStudent);
+  return Boolean(activeName) && normalize(name) === activeName;
+}
+
 function updateStudentLocation(index, value) {
+  if (!requireAdmin()) return;
+
   state.students[index].location = value || "Online";
   addLocationOption("student", state.students[index].location);
   saveState();
@@ -941,6 +1206,8 @@ function addLocationOption(kind, value) {
 }
 
 function removeLocationOption(kind, value) {
+  if (!requireAdmin()) return;
+
   const option = value.trim();
   if (!option) return;
 
@@ -982,6 +1249,8 @@ function closeLocationMenus(exceptMenu = null) {
 }
 
 function addStudent() {
+  if (!requireAdmin()) return;
+
   state.students.push({ location: "Online", status: "open", name: "", note: "" });
   addLocationOption("student", "Online");
   saveState();

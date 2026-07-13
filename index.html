@@ -6,6 +6,7 @@
   <title>Fred Meeting Schedule</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js" defer></script>
   <script src="firebase-config.js" defer></script>
   <script src="data.js" defer></script>
@@ -33,6 +34,11 @@
             <label for="searchInput">Search</label>
             <input id="searchInput" type="search" placeholder="Name, location, note">
           </div>
+          <div class="admin-access" aria-label="Administrator access">
+            <span class="admin-access-status" id="adminAccessStatus">View only</span>
+            <button class="text-button" id="adminLoginButton" type="button">Admin login</button>
+            <button class="text-button" id="adminLogoutButton" type="button" hidden>Log out</button>
+          </div>
         </div>
       </div>
     </header>
@@ -45,9 +51,11 @@
           <div>
             <h2 id="scheduleTitle">Weekly Schedule</h2>
             <p id="weekHint"></p>
+            <p class="current-turn-label" id="currentTurnLabel" aria-live="polite">Current turn: No one</p>
           </div>
           <div class="schedule-actions">
             <span id="selectionHint" aria-live="polite">Ctrl/⌘+click: cell · Shift+click: column</span>
+            <button class="text-button end-turn-button" id="endTurnButton" type="button" disabled>End turn</button>
             <button class="text-button" id="markClosedButton" type="button">Merge Not open</button>
             <button class="text-button" id="splitSelectedButton" type="button">Unmerge selected</button>
             <button class="text-button subtle" id="clearSelectionButton" type="button">Clear selection</button>
@@ -89,6 +97,24 @@
         <div class="student-list" id="studentList"></div>
       </aside>
     </main>
+  </div>
+
+  <div class="auth-overlay" id="adminLoginModal" role="dialog" aria-modal="true" aria-labelledby="adminLoginTitle" hidden>
+    <section class="auth-card">
+      <h2 id="adminLoginTitle">Administrator login</h2>
+      <p>Only approved administrators can edit the meeting schedule.</p>
+      <form id="adminLoginForm">
+        <label for="adminEmailInput">Email</label>
+        <input id="adminEmailInput" name="email" type="email" autocomplete="username" required>
+        <label for="adminPasswordInput">Password</label>
+        <input id="adminPasswordInput" name="password" type="password" autocomplete="current-password" required>
+        <p class="auth-error" id="adminLoginError" role="alert"></p>
+        <div class="auth-actions">
+          <button class="text-button" id="adminLoginCancelButton" type="button">Cancel</button>
+          <button class="text-button auth-submit" id="adminLoginSubmitButton" type="submit">Log in</button>
+        </div>
+      </form>
+    </section>
   </div>
 </body>
 </html>
