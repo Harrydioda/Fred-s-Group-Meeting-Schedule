@@ -36,6 +36,7 @@ let isSelecting = false;
 let showWeekend = false;
 let activeAutocompleteInput = null;
 let activeMobileDayIndex = 0;
+let activeSummaryCategory = null;
 let firestoreDb = null;
 let isApplyingCloudState = false;
 let cloudSaveTimer = null;
@@ -312,25 +313,72 @@ function renderSummary(week, dates) {
     const dayKey = formatDate(date);
     return Object.values(week.slots[dayKey] || {});
   });
-  const meetings = allValues.filter(value => value && normalize(value) !== "not open").length;
-  const closed = allValues.filter(value => normalize(value) === "not open").length;
-  const pending = state.students.filter(student => normalizeStudentStatus(student.status, student.note) === "pending").length;
-  const skip = state.students.filter(student => normalizeStudentStatus(student.status, student.note) === "skip").length;
-  const unscheduled = state.students.filter(student => {
+  const meetingNames = allValues.filter(value => value && normalize(value) !== "not open");
+  const pendingNames = state.students.filter(student => {
+    return student.name && normalizeStudentStatus(student.status, student.note) === "pending";
+  }).map(student => student.name);
+  const skipNames = state.students.filter(student => {
+    return student.name && normalizeStudentStatus(student.status, student.note) === "skip";
+  }).map(student => student.name);
+  const unscheduledNames = state.students.filter(student => {
     return student.name && normalizeStudentStatus(student.status, student.note) !== "skip" && !isScheduled(week, dates, student.name);
-  }).length;
+  }).map(student => student.name);
+
+  const categories = {
+    meetings: { label: "Meetings", names: meetingNames },
+    pending: { label: "Pending", names: pendingNames },
+    skip: { label: "Skip", names: skipNames },
+    unscheduled: { label: "Unscheduled", names: unscheduledNames }
+  };
+
+  if (activeSummaryCategory && !categories[activeSummaryCategory]) {
+    activeSummaryCategory = null;
+  }
 
   els.summary.innerHTML = [
-    metric("Meetings", meetings),
-    metric("Not open", closed),
-    metric("Pending", pending),
-    metric("Skip", skip),
-    metric("Unscheduled", unscheduled)
+    ...Object.entries(categories).map(([key, category]) => {
+      return metric(category.label, category.names.length, key, key === activeSummaryCategory);
+    }),
+    activeSummaryCategory ? summaryDetails(categories[activeSummaryCategory]) : ""
   ].join("");
+
+  els.summary.querySelectorAll(".metric[data-category]").forEach(button => {
+    button.addEventListener("click", () => {
+      activeSummaryCategory = activeSummaryCategory === button.dataset.category
+        ? null
+        : button.dataset.category;
+      renderSummary(week, dates);
+    });
+  });
 }
 
-function metric(label, value) {
-  return `<article class="metric"><span>${label}</span><strong>${value}</strong></article>`;
+function metric(label, value, category, active) {
+  return `
+    <button
+      class="metric ${active ? "active" : ""}"
+      type="button"
+      data-category="${category}"
+      aria-expanded="${active ? "true" : "false"}"
+      aria-controls="summaryDetails"
+    >
+      <span>${label}</span>
+      <strong>${value}</strong>
+    </button>
+  `;
+}
+
+function summaryDetails(category) {
+  const uniqueNames = uniqueValues(category.names);
+  const names = uniqueNames.length
+    ? uniqueNames.map(name => `<span class="summary-name">${escapeHtml(name)}</span>`).join("")
+    : `<span class="summary-empty">No one in this category.</span>`;
+
+  return `
+    <section class="summary-details" id="summaryDetails" aria-live="polite">
+      <strong>${escapeHtml(category.label)}</strong>
+      <div class="summary-names">${names}</div>
+    </section>
+  `;
 }
 
 function renderMobileDayTabs(dates) {
@@ -512,13 +560,19 @@ function updateDayLocation(week, dayKey, value) {
 function bindScheduleEvents(week) {
   document.querySelectorAll(".slot[data-date]").forEach(cell => {
     cell.addEventListener("mousedown", event => {
-      if (event.target.classList.contains("slot-input") && !event.target.readOnly) {
+      const usesSelectionShortcut = event.ctrlKey || event.metaKey || event.shiftKey;
+      if (event.target.classList.contains("slot-input") && !event.target.readOnly && !usesSelectionShortcut) {
         return;
       }
 
       event.preventDefault();
-      isSelecting = true;
-      toggleCellSelection(cell, event.shiftKey);
+      isSelecting = !usesSelectionShortcut;
+
+      if (event.shiftKey) {
+        selectCellColumn(cell, event.ctrlKey || event.metaKey);
+      } else {
+        toggleCellSelection(cell, event.ctrlKey || event.metaKey);
+      }
       render();
     });
 
@@ -692,15 +746,37 @@ function addCellSelection(cell) {
   cellKeysFromElement(cell).forEach(key => selectedCells.add(key));
 }
 
+function selectCellColumn(cell, keepExisting) {
+  const dayKey = cell.dataset.date;
+  const columnKeys = TIME_SLOTS.map(time => makeCellKey(dayKey, time));
+  const allSelected = columnKeys.every(key => selectedCells.has(key));
+
+  if (!keepExisting) {
+    selectedCells.clear();
+  }
+
+  columnKeys.forEach(key => {
+    if (keepExisting && allSelected) {
+      selectedCells.delete(key);
+    } else {
+      selectedCells.add(key);
+    }
+  });
+}
+
 function cellKeysFromElement(cell) {
   const dayKey = cell.dataset.date;
-  const times = (cell.dataset.times || "").split("||").filter(Boolean);
-  return times.map(time => makeCellKey(dayKey, time));
+  return cellTimesFromElement(cell).map(time => makeCellKey(dayKey, time));
+}
+
+function cellTimesFromElement(cell) {
+  return (cell.dataset.times || "").split("||").filter(Boolean);
 }
 
 function renderSelectionHint() {
   const count = selectedCells.size;
-  els.selectionHint.textContent = count ? `${count} cells selected` : "No cells selected";
+  const shortcutHint = "Ctrl/⌘+click: cell · Shift+click: column";
+  els.selectionHint.textContent = count ? `${count} cells selected · ${shortcutHint}` : shortcutHint;
   els.markClosedButton.disabled = count === 0;
   els.splitSelectedButton.disabled = count === 0;
   els.clearSelectionButton.disabled = count === 0;
@@ -921,7 +997,13 @@ function slotStatus(value) {
   const student = state.students.find(item => normalize(item.name) === text);
   if (student && normalizeStudentStatus(student.status, student.note) === "pending") return "pending";
   if (student && normalizeStudentStatus(student.status, student.note) === "skip") return "skip";
+  if (student && isOnlineLocation(student.location)) return "online";
   return "meeting";
+}
+
+function isOnlineLocation(location) {
+  const text = normalize(location);
+  return text === "online" || text.includes("\u7dda\u4e0a");
 }
 
 function studentStatus(week, dates, student) {

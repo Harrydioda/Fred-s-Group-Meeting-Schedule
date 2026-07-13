@@ -18,6 +18,8 @@
   --ntu: #ede9fe;
   --focus: #1f7a8c;
   --danger: #b42318;
+  --search-highlight: #fee2e2;
+  --search-highlight-strong: #f4a3a3;
   --shadow: 0 12px 30px rgba(31, 41, 51, 0.08);
 }
 
@@ -222,6 +224,20 @@ input[type="date"] {
   border-radius: 8px;
   padding: 14px 16px;
   box-shadow: var(--shadow);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.metric:hover,
+.metric:focus-visible,
+.metric.active {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px rgba(31, 122, 140, 0.13), var(--shadow);
+}
+
+.metric:hover {
+  transform: translateY(-1px);
 }
 
 .metric span {
@@ -237,6 +253,41 @@ input[type="date"] {
   margin-top: 4px;
   font-size: 26px;
   line-height: 1;
+}
+
+.summary-details {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.summary-details > strong {
+  font-size: 14px;
+}
+
+.summary-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.summary-name {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.summary-empty {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .schedule-wrap,
@@ -413,6 +464,11 @@ td:last-child {
   border-color: #c9ddff;
 }
 
+.slot-content.online {
+  background: var(--online);
+  border-color: #a7e8cd;
+}
+
 .slot-content.closed {
   background: var(--closed);
   color: var(--closed-ink);
@@ -436,7 +492,8 @@ td:last-child {
 }
 
 .slot-content.highlight {
-  outline: 3px solid rgba(31, 122, 140, 0.35);
+  background: var(--search-highlight);
+  outline: 3px solid var(--search-highlight-strong);
   outline-offset: 1px;
 }
 
@@ -491,6 +548,10 @@ td:last-child {
 
 .dot.meeting {
   background: var(--meeting);
+}
+
+.dot.online {
+  background: var(--online);
 }
 
 .dot.closed {
@@ -562,8 +623,9 @@ td:last-child {
 }
 
 .student.active {
-  border-color: var(--focus);
-  box-shadow: 0 0 0 3px rgba(31, 122, 140, 0.12);
+  border-color: var(--search-highlight-strong);
+  background: #fff7f7;
+  box-shadow: 0 0 0 3px rgba(244, 163, 163, 0.24);
 }
 
 .student-fields {

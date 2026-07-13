@@ -47,7 +47,7 @@
             <p id="weekHint"></p>
           </div>
           <div class="schedule-actions">
-            <span id="selectionHint">No cells selected</span>
+            <span id="selectionHint" aria-live="polite">Ctrl/⌘+click: cell · Shift+click: column</span>
             <button class="text-button" id="markClosedButton" type="button">Merge Not open</button>
             <button class="text-button" id="splitSelectedButton" type="button">Unmerge selected</button>
             <button class="text-button subtle" id="clearSelectionButton" type="button">Clear selection</button>
@@ -58,7 +58,7 @@
         <div class="mobile-day-tabs" id="mobileDayTabs" aria-label="Choose schedule day"></div>
 
         <div class="schedule-scroll">
-          <table class="schedule" aria-label="Editable weekly meeting schedule">
+          <table class="schedule" aria-label="Editable weekly meeting schedule" aria-describedby="selectionHint">
             <thead id="scheduleHead"></thead>
             <tbody id="scheduleBody"></tbody>
           </table>
@@ -70,7 +70,8 @@
         <div class="autocomplete-panel" id="studentAutocomplete" hidden></div>
 
         <div class="legend" aria-label="Status legend">
-          <span class="legend-item"><span class="dot meeting"></span> Meeting</span>
+          <span class="legend-item"><span class="dot online"></span> Online</span>
+          <span class="legend-item"><span class="dot meeting"></span> In person / Sinica</span>
           <span class="legend-item"><span class="dot closed"></span> Not open</span>
           <span class="legend-item"><span class="dot pending"></span> Pending note</span>
           <span class="legend-item"><span class="dot skip"></span> Skip note</span>
