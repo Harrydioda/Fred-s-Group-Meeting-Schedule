@@ -190,9 +190,7 @@ function initializeCloudSync() {
         return;
       }
 
-      const hasPendingWrites = Boolean(snapshot.metadata?.hasPendingWrites);
-      const hasUnsavedLocalChanges = localChangeVersion !== savedChangeVersion;
-      if (hasPendingWrites || hasUnsavedLocalChanges) {
+      if (snapshot.metadata?.hasPendingWrites || localChangeVersion !== savedChangeVersion) {
         return;
       }
 
@@ -238,7 +236,7 @@ async function saveStateToCloud() {
     await firestoreDb.collection(collection).doc(docId).set({
       state: stateSnapshot,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    });
     savedChangeVersion = Math.max(savedChangeVersion, changeVersion);
     updateSyncStatus(savedChangeVersion === localChangeVersion ? "Synced" : "Saving...");
   } catch (error) {
