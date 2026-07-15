@@ -80,13 +80,7 @@ function init() {
     render();
   });
 
-  els.clearWeekButton.addEventListener("click", () => {
-    const key = formatDate(activeMonday);
-      state.weeks[key] = createBlankWeek(activeMonday);
-    selectedCells.clear();
-    saveState();
-    render();
-  });
+  els.clearWeekButton.addEventListener("click", clearWeekWithConfirmation);
 
   els.searchInput.addEventListener("input", render);
   els.endTurnButton.addEventListener("click", endCurrentTurn);
@@ -277,6 +271,25 @@ function createBlankWeek(monday) {
   });
 
   return { locations, slots };
+}
+
+function clearWeekWithConfirmation() {
+  const weekKey = formatDate(activeMonday);
+  const confirmation = window.prompt(
+    `警告：執行後，${weekKey} 這一週的所有 meeting 與每日地點都會永久遺失，而且無法恢復。\n\n若確定要繼續，請輸入：clear week`
+  );
+
+  if (confirmation === null) return;
+
+  if (confirmation.trim() !== "clear week") {
+    window.alert('未清除任何資料。必須完整輸入 "clear week" 才能執行。');
+    return;
+  }
+
+  state.weeks[weekKey] = createBlankWeek(activeMonday);
+  selectedCells.clear();
+  saveState();
+  render();
 }
 
 function moveWeek(direction) {
